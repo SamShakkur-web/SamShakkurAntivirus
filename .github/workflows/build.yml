@@ -5,24 +5,21 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:  # Permet de lancer manuellement
+  workflow_dispatch:
 
 jobs:
   build-windows:
     name: 🪟 Build Windows Executable
-    runs-on: windows-latest  # 🎯 Machine Windows réelle!
+    runs-on: windows-latest
     
     steps:
     - name: 📥 Checkout code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        
+      
     - name: 🐍 Setup Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
-        architecture: 'x64'
         
     - name: 📦 Install dependencies
       run: |
@@ -30,15 +27,9 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
         
-    - name: 🔍 Verify installation
-      run: |
-        python --version
-        pip list
-        pyinstaller --version
-        
     - name: 🏗️ Build executable
       run: |
-        # Créer le dossier data s'il n'existe pas
+        # Créer les dossiers s'ils n'existent pas
         if not exist data mkdir data
         if not exist resources mkdir resources
         
@@ -60,36 +51,16 @@ jobs:
           --hidden-import="requests" `
           --hidden-import="python_dotenv" `
           --hidden-import="cachetools" `
-          --hidden-import="sqlite3" `
           --console `
           --onefile `
           --clean `
           main.py
           
-    - name: ✅ Verify executable
-      run: |
-        # Vérifier que l'exécutable existe
-        if exist dist\SamShakkurAntivirus.exe (
-            echo "✅ Executable created successfully!"
-            dir dist\SamShakkurAntivirus.exe
-        ) else (
-            echo "❌ Executable not found!"
-            exit 1
-        )
-        
-    - name: 📦 Upload artifact
-      uses: actions/upload-artifact@v3
+    - name: 📦 Upload Windows artifact
+      uses: actions/upload-artifact@v4
       with:
         name: SamShakkurAntivirus-Windows
         path: dist/SamShakkurAntivirus.exe
-        retention-days: 7
-        
-    - name: 🏷️ Create release tag
-      if: success()
-      run: |
-        # Créer un tag automatique
-        $version = "v2.0.0-${{ github.run_number }}"
-        echo "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
         
   build-linux:
     name: 🐧 Build Linux Executable
@@ -112,7 +83,6 @@ jobs:
         
     - name: 🏗️ Build Linux executable
       run: |
-        # Compiler pour Linux
         pyinstaller \
           --name="SamShakkurAntivirus" \
           --add-data="src:src" \
@@ -134,7 +104,7 @@ jobs:
           main.py
           
     - name: 📦 Upload Linux artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: SamShakkurAntivirus-Linux
         path: dist/SamShakkurAntivirus
@@ -147,7 +117,7 @@ jobs:
     
     steps:
     - name: 📥 Download artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: ./artifacts
         
@@ -162,18 +132,11 @@ jobs:
         body: |
           🛡️ SamShakkur Antivirus - Version ${{ github.run_number }}
           
-          ### Nouveautés :
-          - Build automatique avec GitHub Actions
-          - Exécutable Windows (.exe)
-          - Exécutable Linux
-          - Multilingue (5 langues)
-          - Système Free/Premium
-          
-          ### Téléchargement :
+          ### 📦 Téléchargements :
           - **Windows** : SamShakkurAntivirus.exe
           - **Linux** : SamShakkurAntivirus
           
-          ### Instructions :
+          ### 🚀 Instructions :
           1. Téléchargez la version correspondante
           2. Exécutez l'application
           3. Connectez-vous avec votre email
