@@ -104,3 +104,12 @@ except Exception as e:
       with:
         name: SamShakkurAntivirus-Windows
         path: dist/SamShakkurAntivirus.exe
+	
+    - name: Debug complet
+      run: |
+       echo "=== DEBUG ==="
+       python --version
+       pip list
+       echo "Fichiers :"
+       dir /b /s
+       echo "=== FIN DEBUG ==="
