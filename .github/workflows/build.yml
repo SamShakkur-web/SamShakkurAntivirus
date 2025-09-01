@@ -1,0 +1,181 @@
+name: 🛡️ Build SamShakkur Antivirus
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Permet de lancer manuellement
+
+jobs:
+  build-windows:
+    name: 🪟 Build Windows Executable
+    runs-on: windows-latest  # 🎯 Machine Windows réelle!
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        architecture: 'x64'
+        
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+        
+    - name: 🔍 Verify installation
+      run: |
+        python --version
+        pip list
+        pyinstaller --version
+        
+    - name: 🏗️ Build executable
+      run: |
+        # Créer le dossier data s'il n'existe pas
+        if not exist data mkdir data
+        if not exist resources mkdir resources
+        
+        # Compiler avec PyInstaller
+        pyinstaller `
+          --name="SamShakkurAntivirus" `
+          --icon="resources/icon.ico" `
+          --add-data="src;src" `
+          --add-data="data;data" `
+          --add-data="resources;resources" `
+          --add-data=".env;." `
+          --hidden-import="streamlit" `
+          --hidden-import="flask" `
+          --hidden-import="stripe" `
+          --hidden-import="Crypto" `
+          --hidden-import="psutil" `
+          --hidden-import="pandas" `
+          --hidden-import="numpy" `
+          --hidden-import="requests" `
+          --hidden-import="python_dotenv" `
+          --hidden-import="cachetools" `
+          --hidden-import="sqlite3" `
+          --console `
+          --onefile `
+          --clean `
+          main.py
+          
+    - name: ✅ Verify executable
+      run: |
+        # Vérifier que l'exécutable existe
+        if exist dist\SamShakkurAntivirus.exe (
+            echo "✅ Executable created successfully!"
+            dir dist\SamShakkurAntivirus.exe
+        ) else (
+            echo "❌ Executable not found!"
+            exit 1
+        )
+        
+    - name: 📦 Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: SamShakkurAntivirus-Windows
+        path: dist/SamShakkurAntivirus.exe
+        retention-days: 7
+        
+    - name: 🏷️ Create release tag
+      if: success()
+      run: |
+        # Créer un tag automatique
+        $version = "v2.0.0-${{ github.run_number }}"
+        echo "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+        
+  build-linux:
+    name: 🐧 Build Linux Executable
+    runs-on: ubuntu-latest
+    needs: build-windows
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: 📦 Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pyinstaller
+        
+    - name: 🏗️ Build Linux executable
+      run: |
+        # Compiler pour Linux
+        pyinstaller \
+          --name="SamShakkurAntivirus" \
+          --add-data="src:src" \
+          --add-data="data:data" \
+          --add-data="resources:resources" \
+          --add-data=".env:." \
+          --hidden-import="streamlit" \
+          --hidden-import="flask" \
+          --hidden-import="stripe" \
+          --hidden-import="Crypto" \
+          --hidden-import="psutil" \
+          --hidden-import="pandas" \
+          --hidden-import="numpy" \
+          --hidden-import="requests" \
+          --hidden-import="python_dotenv" \
+          --hidden-import="cachetools" \
+          --console \
+          --onefile \
+          main.py
+          
+    - name: 📦 Upload Linux artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: SamShakkurAntivirus-Linux
+        path: dist/SamShakkurAntivirus
+        
+  create-release:
+    name: 🚀 Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-linux]
+    if: success()
+    
+    steps:
+    - name: 📥 Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: ./artifacts
+        
+    - name: 🏷️ Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          artifacts/SamShakkurAntivirus-Windows/SamShakkurAntivirus.exe
+          artifacts/SamShakkurAntivirus-Linux/SamShakkurAntivirus
+        tag_name: v2.0.0-${{ github.run_number }}
+        name: SamShakkur Antivirus v2.0.0 (Build #${{ github.run_number }})
+        body: |
+          🛡️ SamShakkur Antivirus - Version ${{ github.run_number }}
+          
+          ### Nouveautés :
+          - Build automatique avec GitHub Actions
+          - Exécutable Windows (.exe)
+          - Exécutable Linux
+          - Multilingue (5 langues)
+          - Système Free/Premium
+          
+          ### Téléchargement :
+          - **Windows** : SamShakkurAntivirus.exe
+          - **Linux** : SamShakkurAntivirus
+          
+          ### Instructions :
+          1. Téléchargez la version correspondante
+          2. Exécutez l'application
+          3. Connectez-vous avec votre email
+        draft: false
+        prerelease: false
