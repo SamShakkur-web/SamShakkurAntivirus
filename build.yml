@@ -1,0 +1,270 @@
+name: 🛡️ Build SamShakkur Antivirus
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.9'
+  BUILD_TIMEOUT: 30
+
+jobs:
+  build-windows:
+    name: 🪟 Build Windows Executable
+    runs-on: windows-latest
+    timeout-minutes: ${{ env.BUILD_TIMEOUT }}
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: 🔍 Verify repository structure
+      run: |
+        echo "📁 Repository structure:"
+        Get-ChildItem -Name
+        echo ""
+        echo "📁 src/ content:"
+        if (Test-Path "src") { Get-ChildItem -Name "src" }
+        echo ""
+        echo "📁 data/ content:"
+        if (Test-Path "data") { Get-ChildItem -Name "data" }
+        echo ""
+        echo "📁 resources/ content:"
+        if (Test-Path "resources") { Get-ChildItem -Name "resources" }
+
+    - name: 📦 Create missing files and directories
+      run: |
+        # Create necessary directories
+        if (!(Test-Path "data")) { New-Item -ItemType Directory -Path "data" }
+        if (!(Test-Path "resources")) { New-Item -ItemType Directory -Path "resources" }
+        
+        # Create empty database file if missing
+        if (!(Test-Path "data/users.db")) {
+          echo "Creating empty database..."
+          python -c "
+import sqlite3
+conn = sqlite3.connect('data/users.db')
+cursor = conn.cursor()
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS users (
+    email TEXT PRIMARY KEY,
+    subscription_type TEXT DEFAULT 'free',
+    subscription_date DATETIME,
+    expiry_date DATETIME,
+    is_premium BOOLEAN DEFAULT FALSE
+)
+''')
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS malware_hashes (
+    hash_value TEXT PRIMARY KEY,
+    malware_name TEXT NOT NULL,
+    risk_level INTEGER DEFAULT 5
+)
+''')
+conn.commit()
+conn.close()
+print('✅ Database created with schema')
+"
+        }
+
+        # Create default icon if missing
+        if (!(Test-Path "resources/icon.ico")) {
+          echo "Creating default icon..."
+          python -c "
+try:
+    from PIL import Image, ImageDraw
+    img = Image.new('RGB', (256, 256), '#3498db')
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([64, 64, 192, 192], fill='#FFA500')
+    draw.ellipse([80, 80, 176, 176], fill='#FFFFFF')
+    img.save('resources/icon.ico', format='ICO')
+    print('✅ Icon created successfully')
+except Exception as e:
+    print('⚠️ Could not create icon, using fallback:', e)
+    img = Image.new('RGB', (256, 256), '#3498db')
+    img.save('resources/icon.ico', format='ICO')
+"
+        }
+
+        # Create .env template if missing (SANS clés réelles)
+        if (!(Test-Path ".env")) {
+          echo "Creating .env template..."
+          @"
+# Stripe Configuration (replace with your actual keys)
+STRIPE_SECRET_KEY=sk_test_your_actual_key_here
+STRIPE_PUBLISHABLE_KEY=pk_test_your_actual_key_here
+STRIPE_WEBHOOK_SECRET=whsec_your_actual_secret_here
+
+# Application Configuration
+DATABASE_FILE=data/users.db
+WEBHOOK_SERVER_URL=http://localhost:5000
+PORT=5000
+DEBUG=False
+MAX_SCAN_FILES=1000
+MAX_CACHE_SIZE=1000
+CACHE_TTL=300
+"@ | Out-File -FilePath ".env" -Encoding UTF8
+        }
+
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        architecture: 'x64'
+
+    - name: 📦 Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install --no-cache-dir -r requirements.txt
+        pip install --no-cache-dir pyinstaller==5.13.0
+
+    - name: 🔍 Verify Python imports
+      run: |
+        echo "Testing Python imports..."
+        python -c "
+import sys
+print('Python path:', sys.version)
+
+modules = [
+    'streamlit', 'flask', 'stripe', 'Crypto', 'psutil',
+    'pandas', 'numpy', 'requests', 'dotenv', 'cachetools',
+    'sqlite3', 'datetime', 'json', 'hashlib', 'base64',
+    'tempfile', 're', 'threading', 'time', 'logging',
+    'collections', 'os', 'sys', 'io'
+]
+
+for module in modules:
+    try:
+        __import__(module)
+        print(f'✅ {module}')
+    except ImportError as e:
+        print(f'❌ {module}: {e}')
+        sys.exit(1)
+
+print('✅ All imports successful!')
+"
+
+    - name: 🏗️ Build with PyInstaller
+      run: |
+        echo "Starting PyInstaller build..."
+        
+        # Build with detailed logging
+        pyinstaller `
+          --name="SamShakkurAntivirus" `
+          --icon="resources/icon.ico" `
+          --add-data="src;src" `
+          --add-data="data;data" `
+          --add-data="resources;resources" `
+          --add-data=".env;." `
+          --hidden-import="streamlit" `
+          --hidden-import="flask" `
+          --hidden-import="stripe" `
+          --hidden-import="Crypto" `
+          --hidden-import="psutil" `
+          --hidden-import="pandas" `
+          --hidden-import="numpy" `
+          --hidden-import="requests" `
+          --hidden-import="python_dotenv" `
+          --hidden-import="cachetools" `
+          --hidden-import="sqlite3" `
+          --hidden-import="datetime" `
+          --hidden-import="json" `
+          --hidden-import="hashlib" `
+          --hidden-import="base64" `
+          --hidden-import="tempfile" `
+          --hidden-import="re" `
+          --hidden-import="threading" `
+          --hidden-import="time" `
+          --hidden-import="logging" `
+          --hidden-import="collections" `
+          --hidden-import="os" `
+          --hidden-import="sys" `
+          --hidden-import="io" `
+          --clean `
+          --noconfirm `
+          --log-level=INFO `
+          --console `
+          --onefile `
+          main.py
+
+        if (Test-Path "dist/SamShakkurAntivirus.exe") {
+            echo "✅ Build successful!"
+            $file = Get-Item "dist/SamShakkurAntivirus.exe"
+            $size = [math]::Round($file.Length / 1MB, 2)
+            echo "File size: $size MB"
+        } else {
+            echo "❌ Build failed!"
+            exit 1
+        }
+
+    - name: 📦 Upload Windows artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: SamShakkurAntivirus-Windows
+        path: dist/SamShakkurAntivirus.exe
+        retention-days: 7
+
+  create-release:
+    name: 🚀 Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build-windows
+    if: success()
+
+    steps:
+    - name: 📥 Download Windows artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: SamShakkurAntivirus-Windows
+        path: ./artifacts
+
+    - name: 🏷️ Create Release
+      uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        files: |
+          artifacts/SamShakkurAntivirus.exe
+        tag_name: v2.0.0-${{ github.run_number }}
+        name: SamShakkur Antivirus v2.0.0
+        body: |
+          🛡️ **SamShakkur Antivirus** - Build #${{ github.run_number }}
+
+          ## 📦 Download
+          - **Windows**: `SamShakkurAntivirus.exe`
+
+          ## 🚀 Features
+          - Multi-language support (5 languages)
+          - AI-powered scanning
+          - Free/Premium system
+          - Real-time dashboard
+
+          ## ⚡ Instructions
+          1. Download the executable
+          2. Run the application
+          3. Access: http://localhost:8501
+
+          ## 🔧 Build Info
+          - **Date**: ${{ github.event.repository.updated_at }}
+          - **Commit**: ${{ github.sha }}
+          - **Workflow**: ${{ github.run_id }}
+        draft: false
+        prerelease: false
+
+  notify:
+    name: 📢 Notification
+    runs-on: ubuntu-latest
+    needs: create-release
+    if: always()
+    
+    steps:
+    - name: ✅ Build status
+      run: |
+        if [ "${{ job.status }}" = "success" ]; then
+          echo "🎉 Build successful! Download: https://github.com/${{ github.repository }}/releases/tag/v2.0.0-${{ github.run_number }}"
+        else
+          echo "❌ Build failed! Check logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        fi
+
